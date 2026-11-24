@@ -1,0 +1,46 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Data and audio files (CONFIDENTIAL - DO NOT COMMIT)
+/data/
+*.wav
+*.mp3
+*.flac
+*.ogg
+*.m4a
+*.aac
+*.tar.gz
+*.zip
+*.7z
+
+# Model weights and checkpoints
+models/
+checkpoints/
+*.pt
+*.pth
+*.bin
+*.onnx
+*.safetensors
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
+
+# Logs and outputs
+logs/
+wandb/
+outputs/
+submissions/
