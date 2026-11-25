@@ -1,33 +1,44 @@
-# BENIN Fongbe Tonal ASR Challenge 2026
+# 🇧🇯 BENIN Fongbe Tonal ASR Challenge 2026 — Branche `data-engineering` (Personne 1)
 
-Projet de reconnaissance automatique de la parole (ASR) tonale pour la langue Fongbé (Bénin).
+Ce dépôt (branche **`data-engineering`**) contient l'ensemble des travaux et livrables du **Pôle 1 — Data Engineering (Personne 1)** : exploration, audit du fichier `SampleSubmission.csv`, contrôle qualité acoustique et textuel, analyse linguistique du Fongbé et préparation des jeux de données propres pour le reste de l'équipe.
 
-## Organisation de l'équipe (4 Pôles)
-- **Personne 1 (Vous) — Data Engineering** : Exploration, nettoyage, standardisation audio et métadonnées.
-- **Personne 2 — Machine Learning / ASR** : Architecture acoustique, fine-tuning et entraînement de modèles.
-- **Personne 3 — NLP / Analyse Tonale** : Phonétique, gestion des tons, syllabification (`syllabify()`).
-- **Personne 4 — Évaluation / Déploiement** : Calcul du métrique pondéré, optimisation CPU (< 1 Go, < 2 Go RAM).
+## Exécution Rapide (Pôle 1)
 
-## Structure du Répertoire
+- **Notebook Jupyter interactif complet (pré-exécuté avec tableaux et graphiques)** :
+  `notebooks/Pole1_Data_Engineering_Fongbe.ipynb`
+- **Pipeline CLI d'audit et génération des manifests** :
+  ```bash
+  python3 -m src.data.run_audit
+  ```
+- **Tests unitaires Data Engineering** :
+  ```bash
+  python3 -m unittest discover tests/ -v
+  ```
+
+## Structure du Pôle 1 (Personne 1)
 ```
 Hackathon_1/
-├── data/                  # Données brutes et traitées (exclues de git)
-│   ├── raw/               # 350h de données d'origine
-│   ├── processed/         # Audios standardisés (16kHz mono)
-│   └── manifests/         # Manifests JSON/CSV pour l'entraînement
-├── notebooks/             # Notebooks d'exploration et d'analyse
+├── data/                              # Ignoré par Git (données confidentielles)
+│   ├── raw/SampleSubmission.csv       # 9 407 IDs officiels de test
+│   ├── processed/                     # Audios standardisés WAV 16kHz mono PCM 16-bit
+│   └── manifests/                     # Livrables Personne 1 : train/val/test.jsonl + rapport JSON
+├── notebooks/
+│   └── Pole1_Data_Engineering_Fongbe.ipynb  # Notebook complet de vos 6 missions Data Engineering
 ├── src/
-│   ├── data/              # Scripts Data Engineering (Personne 1)
-│   │   ├── audit.py       # Diagnostic des audios et textes
-│   │   └── preprocess.py  # Standardisation
-│   ├── models/            # Entraînement et architectures (Personne 2)
-│   ├── nlp/               # Syllabification et traitement tonal (Personne 3)
-│   └── eval/              # Métriques, bench CPU et inférence (Personne 4)
-├── docs/
-│   └── trello_planning.md # Tâches détaillées et plannings
-├── .gitignore
-└── README.md
+│   └── data/
+│       ├── config.py                  # Constantes audio (16 kHz, mono, 0.5s–20s)
+│       ├── submission_parser.py       # Audit de SampleSubmission.csv & classification des sources
+│       ├── audit.py                   # Détection d'anomalies audio/texte (silence, durée, glyphes)
+│       ├── preprocess.py              # Conversion FFmpeg 16kHz mono 16-bit PCM
+│       ├── fongbe_phonetics.py        # Analyse linguistique Fongbé (tons, nasales, digraphes, ɖ/ɔ/ɛ)
+│       ├── syllabifier.py             # Aperçu syllabique de contrôle ("Un nɔ́ ɖu nǔ" -> "un nɔ1 ɖu nu3")
+│       ├── augmentation.py            # Augmentation audio préservant les tons (SNR, gain, SpecAugment)
+│       ├── dataset.py                 # Split sans fuite locuteur & génération des manifests JSONL
+│       ├── synthetic_data.py          # Jeu d'essai Fongbé (cas sains + anomalies types)
+│       └── run_audit.py               # Point d'entrée CLI Data Engineering
+├── tests/
+│   └── test_data_pipeline.py          # Suite de tests unitaires du Pôle 1
+└── docs/
+    ├── DOCUMENTATION.md               # Documentation technique complète Personne 1
+    └── trello_planning.md             # Planification Trello
 ```
-
-## Règles de Confidentialité
-Les données du challenge sont strictement confidentielles. Ne jamais committer de fichiers audio ou de transcriptions brutes sur le dépôt Git.

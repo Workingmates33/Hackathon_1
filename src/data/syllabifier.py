@@ -1,60 +1,87 @@
-"""Syllabification and tone conversion module for Fongbe.
+"""Aperçu syllabique de contrôle pour le Data Engineering (validation des métadonnées).
 
-Follows the challenge's official evaluation formatting:
-e.g.: "Un nɔ́ ɖu nǔ" -> "un nɔ1 ɖu nu3"
+Permet à la Personne 1 de vérifier que les transcriptions préparées sont propres et compatibles
+avec le format attendu par la fonction `syllabify()` du challenge (ex: "Un nɔ́ ɖu nǔ" -> "un nɔ1 ɖu nu3").
 """
 
-import re
 import unicodedata
 from typing import List
 
-
-# Standard mapping of diacritics to numeric tone tags
 DIACRITIC_TO_TONE = {
-    "\u0301": "1",  # Acute / High tone (ex: nɔ́ -> nɔ1)
-    "\u0302": "2",  # Circumflex / Falling
-    "\u030c": "3",  # Caron / Rising (ex: nǔ -> nu3)
-    "\u0300": "4",  # Grave / Low
+    "\u0301": "1",  # Ton haut (´)
+    "\u0302": "2",  # Ton descendant (ˆ)
+    "\u030c": "3",  # Ton montant (ˇ)
+    "\u0300": "4",  # Ton bas (`)
+}
+
+VOWELS = {"a", "e", "ɛ", "i", "o", "ɔ", "u"}
+FONGBE_ONSET_CLUSTERS = {
+    "gb", "kp", "hw", "xw", "ny",
+    "bl", "pl", "fl", "vl", "kl", "gl", "hl", "wl", "xl", "sl", "zl", "ml",
+    "dl", "tl", "ɖl", "by", "py", "fy", "vy", "ky", "gy", "xy", "sy", "zy",
 }
 
 
+def syllabify_word(word: str) -> List[str]:
+    """Découpe un mot Fongbé en syllabes tonales pour vérifier la cohérence des annotations."""
+    nfd = unicodedata.normalize("NFD", word.lower().strip())
+    units = []
+    for ch in nfd:
+        if ch in DIACRITIC_TO_TONE:
+            if units:
+                b, t = units[-1]
+                units[-1] = (b, DIACRITIC_TO_TONE[ch] if not t else t)
+        elif unicodedata.combining(ch):
+            continue
+        elif ch.isalpha() or ch in {"ɖ", "ɔ", "ɛ"}:
+            units.append((ch, ""))
+
+    syllables: List[str] = []
+    i, n = 0, len(units)
+    while i < n:
+        chars: List[str] = []
+        tone = ""
+
+        if units[i][0] in {"m", "n"} and units[i][1] != "" and (i + 1 == n or units[i + 1][0] not in VOWELS):
+            syllables.append(f"{units[i][0]}{units[i][1]}")
+            i += 1
+            continue
+
+        if units[i][0] not in VOWELS:
+            if i + 1 < n and (units[i][0] + units[i + 1][0]) in FONGBE_ONSET_CLUSTERS:
+                chars.extend([units[i][0], units[i + 1][0]])
+                i += 2
+            else:
+                chars.append(units[i][0])
+                i += 1
+
+        if i < n and units[i][0] in VOWELS:
+            v_char, v_tone = units[i]
+            chars.append(v_char)
+            if v_tone:
+                tone = v_tone
+            i += 1
+            while i < n and units[i][0] == v_char and (units[i][1] == "" or units[i][1] == tone):
+                chars.append(units[i][0])
+                if units[i][1] and not tone:
+                    tone = units[i][1]
+                i += 1
+            if i < n and units[i][0] == "n" and units[i][1] == "":
+                if not (i + 1 < n and units[i + 1][0] in VOWELS):
+                    chars.append("n")
+                    i += 1
+
+        base = "".join(chars)
+        if base:
+            syllables.append(f"{base}{tone}" if tone else base)
+    return syllables
+
+
 def syllabify(text: str) -> str:
-    """Simulate the challenge's official syllabify function.
-
-    Decomposes characters, extracts the tone diacritic, appends tone number
-    to the syllable/word, and returns the normalized string.
-
-    Example:
-        >>> syllabify("Un nɔ́ ɖu nǔ")
-        'un nɔ1 ɖu nu3'
-    """
-    if not text:
+    """Transforme une transcription Fongbé en syllabes numérotées (ex: 'Un nɔ́ ɖu nǔ' -> 'un nɔ1 ɖu nu3')."""
+    if not text or not isinstance(text, str):
         return ""
-
-    words = text.strip().split()
-    processed_words = []
-
-    for word in words:
-        # NFD decomposes precomposed characters into base letter + diacritics
-        decomposed = unicodedata.normalize("NFD", word.lower())
-        
-        # Check for tone marks
-        tones_found = []
-        base_chars = []
-        
-        for ch in decomposed:
-            if ch in DIACRITIC_TO_TONE:
-                tones_found.append(DIACRITIC_TO_TONE[ch])
-            elif not unicodedata.combining(ch):
-                base_chars.append(ch)
-
-        base_word = unicodedata.normalize("NFC", "".join(base_chars))
-        
-        # If a tone was found, append it (or the predominant tone)
-        if tones_found:
-            tone_suffix = "".join(tones_found)
-            processed_words.append(f"{base_word}{tone_suffix}")
-        else:
-            processed_words.append(base_word)
-
-    return " ".join(processed_words)
+    out: List[str] = []
+    for w in text.strip().split():
+        out.extend(syllabify_word(w))
+    return " ".join(out)
