@@ -1,0 +1,56 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Data and audio files (CONFIDENTIAL - DO NOT COMMIT)
+/data/*
+!/data/raw/
+/data/raw/*
+!/data/raw/.gitkeep
+!/data/processed/
+/data/processed/*
+!/data/processed/.gitkeep
+!/data/manifests/
+/data/manifests/*
+!/data/manifests/.gitkeep
+*.wav
+*.mp3
+*.flac
+*.ogg
+*.m4a
+*.aac
+*.tar.gz
+*.zip
+*.7z
+
+# Model weights and checkpoints
+models/
+checkpoints/
+*.pt
+*.pth
+*.bin
+*.onnx
+*.safetensors
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
+
+# Logs and outputs
+.pytest_cache/
+logs/
+wandb/
+outputs/
+submissions/
