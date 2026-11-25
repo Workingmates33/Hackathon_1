@@ -1,0 +1,42 @@
+# Competition confidential data — NEVER commit or push!
+Train_reliable.csv
+Train_religious.csv
+Train_uncertain.csv
+Test.csv
+SampleSubmission.csv
+SHA256SUMS
+audio/
+fongbe_data/
+*.tar
+*.tar.gz
+*.wav
+*.flac
+*.mp3
+
+# Generated splits, models, checkpoints, submissions
+splits/
+outputs/
+checkpoints/
+weights/
+submissions/
+*.onnx
+*.onnx.data
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.ckpt
+*.arpa
+*.klm
+*submission*.csv
+*prediction*.csv
+
+# Python / OS / IDE
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/
+desktop.ini
+.DS_Store
+.env
