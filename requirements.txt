@@ -1,13 +1,18 @@
-# Audio processing
+# Traitement et exploration audio (Data Engineering)
 soundfile>=0.12.1
-numpy>=1.24.0
-scipy>=1.10.0
+librosa>=0.10.1
+numpy>=2.0.0
+scipy>=1.14.0
 
-# NLP & text processing
-unicodedata2>=15.1.0
+# Manipulation de données et barres de progression
+pandas>=2.2.3
+tqdm>=4.66.0
 
-# Data management
-pandas>=2.0.0
+# Visualisation et Notebook Jupyter
+matplotlib>=3.9.0
+jupyter>=1.0.0
+ipykernel>=6.29.5
+nbformat>=5.10.0
 
-# Dev & testing
-pytest>=7.4.0
+# Tests unitaires et contrôle qualité
+pytest>=8.0.0

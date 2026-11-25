@@ -28,30 +28,44 @@ def check_audio_dependencies() -> str:
         return "wave"
 
 
-def inspect_audio_file(filepath: str, backend: str = "wave") -> Dict[str, Any]:
-    """Extrait les propriétés techniques et acoustiques (RMS, silence, saturation) d'un fichier WAV."""
+def inspect_audio_file(filepath: str, backend: Optional[str] = None) -> Dict[str, Any]:
+    """Extrait les propriétés techniques et acoustiques (RMS, silence, saturation) d'un fichier audio."""
     p = Path(filepath)
     if not p.exists():
         return {"exists": False, "corrupted": True, "error": "File not found"}
 
+    if backend is None:
+        backend = check_audio_dependencies()
+
     try:
-        with wave.open(str(p), "rb") as wf:
-            frames = wf.getnframes()
-            rate = wf.getframerate()
-            channels = wf.getnchannels()
-            sampwidth = wf.getsampwidth()
-            duration = frames / float(rate) if rate > 0 else 0.0
-            raw_bytes = wf.readframes(frames)
-
-        if sampwidth == 2 and len(raw_bytes) > 0:
-            samples = np.frombuffer(raw_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+        if backend == "soundfile":
+            import soundfile as sf
+            info = sf.info(str(p))
+            samples, rate = sf.read(str(p), dtype="float32", always_2d=True)
+            channels = info.channels
+            duration = info.duration
+            bit_depth = 16 if "16" in (info.subtype or "") else (24 if "24" in (info.subtype or "") else 32)
+            fmt = info.format
+            mono = samples.mean(axis=1) if samples.shape[1] > 1 else samples[:, 0]
         else:
-            samples = np.zeros(1, dtype=np.float32)
+            with wave.open(str(p), "rb") as wf:
+                frames = wf.getnframes()
+                rate = wf.getframerate()
+                channels = wf.getnchannels()
+                sampwidth = wf.getsampwidth()
+                duration = frames / float(rate) if rate > 0 else 0.0
+                raw_bytes = wf.readframes(frames)
+            bit_depth = sampwidth * 8
+            fmt = "WAV"
+            if sampwidth == 2 and len(raw_bytes) > 0:
+                mono = np.frombuffer(raw_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+            else:
+                mono = np.zeros(1, dtype=np.float32)
 
-        rms_energy = float(np.sqrt(np.mean(samples ** 2))) if len(samples) else 0.0
-        peak_amp = float(np.max(np.abs(samples))) if len(samples) else 0.0
-        silence_ratio = float(np.mean(np.abs(samples) < 0.01)) if len(samples) else 1.0
-        clipping_ratio = float(np.mean(np.abs(samples) >= 0.995)) if len(samples) else 0.0
+        rms_energy = float(np.sqrt(np.mean(mono ** 2))) if len(mono) else 0.0
+        peak_amp = float(np.max(np.abs(mono))) if len(mono) else 0.0
+        silence_ratio = float(np.mean(np.abs(mono) < 0.01)) if len(mono) else 1.0
+        clipping_ratio = float(np.mean(np.abs(mono) >= 0.995)) if len(mono) else 0.0
 
         return {
             "exists": True,
@@ -59,13 +73,13 @@ def inspect_audio_file(filepath: str, backend: str = "wave") -> Dict[str, Any]:
             "duration": round(duration, 4),
             "samplerate": rate,
             "channels": channels,
-            "bit_depth": sampwidth * 8,
-            "format": "WAV",
+            "bit_depth": bit_depth,
+            "format": fmt,
             "rms_energy": round(rms_energy, 5),
             "peak_amplitude": round(peak_amp, 4),
             "silence_ratio": round(silence_ratio, 4),
             "clipping_ratio": round(clipping_ratio, 5),
-            "needs_resampling": (rate != TARGET_SAMPLE_RATE) or (channels != TARGET_CHANNELS) or (sampwidth != 2),
+            "needs_resampling": (rate != TARGET_SAMPLE_RATE) or (channels != TARGET_CHANNELS) or (bit_depth != 16),
         }
     except Exception as exc:
         return {"exists": True, "corrupted": True, "error": str(exc)}
