@@ -122,6 +122,58 @@ def transcribe_waveform(
     return " ".join(parts).strip()
 
 
+def _infer_worker(args: tuple) -> list[tuple[str, str]]:
+    """Run bit-exact single-thread ONNX INT8 inference on a shard of rows."""
+    (
+        worker_idx,
+        weights_dir,
+        root_dir,
+        rows_shard,
+        id2tok,
+        pad_id,
+        unk_id,
+        max_chunk_sec,
+        kenlm_path,
+        alpha,
+        beta,
+        beam_width,
+        vocab,
+    ) = args
+    import time
+
+    opts = ort.SessionOptions()
+    opts.intra_op_num_threads = 1
+    opts.inter_op_num_threads = 1
+    opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+    opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+    session = ort.InferenceSession(
+        str(Path(weights_dir) / "model_int8.onnx"),
+        sess_options=opts,
+        providers=["CPUExecutionProvider"],
+    )
+    kenlm_decoder = build_kenlm_decoder(vocab, Path(kenlm_path), alpha, beta) if kenlm_path else None
+    out: list[tuple[str, str]] = []
+    t0 = time.perf_counter()
+    total = len(rows_shard)
+    for idx, r in enumerate(rows_shard, 1):
+        audio = read_wav_16k(Path(root_dir) / r["audio_path"])
+        text = transcribe_waveform(
+            session,
+            audio,
+            id2tok=id2tok,
+            pad_id=pad_id,
+            unk_id=unk_id,
+            max_chunk_sec=max_chunk_sec,
+            kenlm_decoder=kenlm_decoder,
+            beam_width=beam_width,
+        )
+        out.append((r["id"], text))
+        if idx % 200 == 0 or idx == total:
+            dt = time.perf_counter() - t0
+            print(f"[worker {worker_idx}] {idx}/{total} utts ({dt / 60:.1f} min)", flush=True)
+    return out
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Frugal 1-thread CPU ONNX INT8 inference.")
     ap.add_argument("--weights", type=Path, required=True, help="Directory containing model_int8.onnx and vocab.json")
@@ -134,6 +186,12 @@ def main() -> None:
     ap.add_argument("--beta", type=float, default=1.0, help="KenLM word insertion bonus")
     ap.add_argument("--beam-width", type=int, default=32)
     ap.add_argument("--max-chunk-sec", type=float, default=25.0, help="Chunk audio longer than this (RAM safety)")
+    ap.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Parallel 1-thread shard workers for fast offline Test.csv generation (ALWAYS keep 1 for measure_frugality.py)",
+    )
     a = ap.parse_args()
 
     vocab: dict[str, int] = json.loads((a.weights / "vocab.json").read_text(encoding="utf-8"))
@@ -143,41 +201,63 @@ def main() -> None:
     pad_id = vocab["[PAD]"]
     unk_id = vocab["[UNK]"]
 
-    opts = ort.SessionOptions()
-    opts.intra_op_num_threads = 1
-    opts.inter_op_num_threads = 1
-    opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
-    opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-    session = ort.InferenceSession(
-        str(a.weights / "model_int8.onnx"),
-        sess_options=opts,
-        providers=["CPUExecutionProvider"],
-    )
-
-    kenlm_decoder = build_kenlm_decoder(vocab, a.kenlm, a.alpha, a.beta) if a.kenlm else None
-
     with open(a.csv, encoding="utf-8-sig", newline="") as f:
         rows = list(csv.DictReader(f))
 
+    if a.workers <= 1:
+        results = _infer_worker((
+            0,
+            str(a.weights),
+            str(a.root),
+            rows,
+            id2tok,
+            pad_id,
+            unk_id,
+            a.max_chunk_sec,
+            str(a.kenlm) if a.kenlm else None,
+            a.alpha,
+            a.beta,
+            a.beam_width,
+            vocab,
+        ))
+    else:
+        import multiprocessing as mp
+        from concurrent.futures import ProcessPoolExecutor
+
+        n_w = min(a.workers, max(1, len(rows)))
+        # Round-robin sharding balances audio durations across workers
+        shards = [rows[i::n_w] for i in range(n_w)]
+        worker_args = [
+            (
+                w_idx,
+                str(a.weights),
+                str(a.root),
+                shard,
+                id2tok,
+                pad_id,
+                unk_id,
+                a.max_chunk_sec,
+                str(a.kenlm) if a.kenlm else None,
+                a.alpha,
+                a.beta,
+                a.beam_width,
+                vocab,
+            )
+            for w_idx, shard in enumerate(shards)
+        ]
+        by_id: dict[str, str] = {}
+        # Use 'spawn' context on Linux to avoid ONNX Runtime fork() deadlocks!
+        with ProcessPoolExecutor(max_workers=n_w, mp_context=mp.get_context("spawn")) as ex:
+            for shard_res in ex.map(_infer_worker, worker_args):
+                for uid, txt in shard_res:
+                    by_id[uid] = txt
+        results = [(r["id"], by_id[r["id"]]) for r in rows]
+
     a.output.parent.mkdir(parents=True, exist_ok=True)
-    results: list[tuple[str, str]] = []
     with open(a.output, "w", encoding="utf-8", newline="") as f:
         w = csv.writer(f)
         w.writerow(["id", "transcription"])
-        for r in rows:
-            audio = read_wav_16k(a.root / r["audio_path"])
-            text = transcribe_waveform(
-                session,
-                audio,
-                id2tok=id2tok,
-                pad_id=pad_id,
-                unk_id=unk_id,
-                max_chunk_sec=a.max_chunk_sec,
-                kenlm_decoder=kenlm_decoder,
-                beam_width=a.beam_width,
-            )
-            w.writerow([r["id"], text])
-            results.append((r["id"], text))
+        w.writerows(results)
 
     if a.syllabified_output:
         a.syllabified_output.parent.mkdir(parents=True, exist_ok=True)
